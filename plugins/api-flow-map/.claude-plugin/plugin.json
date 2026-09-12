@@ -1,0 +1,22 @@
+{
+  "name": "api-flow-map",
+  "description": "Map API request flows in plain English and review what a branch or PR changes.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Bruno"
+  },
+  "license": "MIT",
+  "keywords": [
+    "api",
+    "code-review",
+    "pull-request",
+    "spring",
+    "express",
+    "fastapi",
+    "go",
+    "openapi"
+  ],
+  "displayName": "API Flow Map",
+  "homepage": "https://github.com/Soulful-Iris/api-flow-map",
+  "repository": "https://github.com/Soulful-Iris/api-flow-map"
+}

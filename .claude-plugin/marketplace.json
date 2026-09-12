@@ -1,0 +1,35 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "bruno-api-tools",
+  "description": "API engineering skills for Claude Code: flow maps and PR change reviews for API repositories.",
+  "owner": {
+    "name": "Bruno"
+  },
+  "plugins": [
+    {
+      "name": "api-flow-map",
+      "source": "./plugins/api-flow-map",
+      "description": "Map API request flows in plain English and review what a branch or PR changes (Spring, Express/NestJS, FastAPI/Flask/Django, Go, ASP.NET, OpenAPI, serverless). Self-contained HTML review view, Markdown PR comment, CI risk gate.",
+      "version": "1.0.0",
+      "category": "code-review",
+      "tags": [
+        "api",
+        "code-review",
+        "pull-request",
+        "spring",
+        "express",
+        "fastapi",
+        "go",
+        "openapi",
+        "architecture"
+      ],
+      "author": {
+        "name": "Bruno"
+      },
+      "license": "MIT",
+      "displayName": "API Flow Map",
+      "homepage": "https://github.com/Soulful-Iris/api-flow-map",
+      "repository": "https://github.com/Soulful-Iris/api-flow-map"
+    }
+  ]
+}

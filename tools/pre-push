@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# api-flow-map as a pre-push gate.
+#
+# Install:  tools/install-hook.sh [repo]
+#
+# Bruno, 2026-09-11: "I would want to make sure we apply it as a pre github push."
+#
+# WHY THERE IS NO MODEL IN HERE. The obvious reading of "apply the skill on
+# push" is to have Claude review the diff before every push. That would make a
+# push take minutes and let the same commit pass one day and fail the next, and
+# a slow flaky gate is one people learn to skip -- which is worse than no gate,
+# because everyone believes it is running.
+#
+# It is not needed, and the reason is the skill's own design decision: "the
+# scanner/differ never call a model, so CI results are stable and diffs are
+# reproducible". The risk scoring is deterministic. So the gate is just
+# `apiflow diff --fail-on-risk`, which exits 4 and takes about a second. Claude
+# writing the prose is a separate, optional step you ask for when you want it.
+#
+# What it does on a push:
+#   - finds the base branch on the remote you are pushing to
+#   - diffs the commits being pushed against it
+#   - if the API risk reaches APIFLOW_FAIL_ON, refuses the push and tells you
+#     where the review is
+#
+# Escape hatch: `git push --no-verify`, or APIFLOW_SKIP=1. Both are visible
+# choices. This guard is advisory about API risk -- it is NOT the never-lose-a-
+# line guard, which must never be bypassed.
+set -uo pipefail
+
+[ "${APIFLOW_SKIP:-}" = "1" ] && exit 0
+
+REMOTE="${1:-origin}"
+FAIL_ON="${APIFLOW_FAIL_ON:-high}"
+# Default output goes INSIDE .git, not into the working tree. The first
+# version wrote .apiflow-out/ next to the source: it showed up in `git add -A`,
+# got committed, and then blocked `git checkout` with "local changes would be
+# overwritten". A hook that litters the repo it is guarding does not survive
+# contact with anyone.
+OUT="${APIFLOW_OUT:-}"
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+cd "$repo_root" || exit 0
+if [ -z "$OUT" ]; then
+  OUT="$(git rev-parse --git-dir 2>/dev/null)/apiflow-out"
+fi
+
+# Find apiflow: an env override, a sibling checkout, or the plugin Claude Code
+# installed. Missing is NOT a failure -- a hook that blocks pushes because a
+# tool is absent is a hook that gets uninstalled.
+find_apiflow() {
+  local c
+  for c in "${APIFLOW_BIN:-}" \
+           "$repo_root/plugins/api-flow-map/skills/api-flow-map/scripts/apiflow.py" \
+           "$HOME/ventures/api-flow-map/plugins/api-flow-map/skills/api-flow-map/scripts/apiflow.py" \
+           "$HOME/.claude/plugins/api-flow-map/skills/api-flow-map/scripts/apiflow.py"; do
+    [ -n "$c" ] && [ -f "$c" ] && { echo "$c"; return 0; }
+  done
+  return 1
+}
+APIFLOW="$(find_apiflow)" || {
+  echo "api-flow-map: not found, skipping the API gate" >&2
+  exit 0
+}
+
+PY="$(command -v python3.12 || command -v python3)" || exit 0
+
+# The base to compare against is whatever this push would land on. stdin gives
+# "<local ref> <local sha> <remote ref> <remote sha>" per ref being pushed; a
+# remote sha of all zeros means the branch is new over there.
+base=""
+while read -r _lref _lsha rref rsha; do
+  [ -z "${rref:-}" ] && continue
+  if [ "$rsha" != "0000000000000000000000000000000000000000" ]; then
+    base="$rsha"
+  else
+    for cand in "$REMOTE/main" "$REMOTE/master" "$REMOTE/develop"; do
+      if git rev-parse --verify --quiet "$cand" >/dev/null; then base="$cand"; break; fi
+    done
+  fi
+  break
+done
+
+[ -z "$base" ] && exit 0        # nothing to compare against; not a failure
+
+# The directory must exist before the redirect below, not because of the
+# redirect. Without this, bash fails to open $OUT/.hook.err, the check never
+# runs at all, and the hook takes its own "tool failed, let it through" branch
+# -- a gate reporting success while doing nothing, which is the failure I have
+# been writing about all week. Caught by pushing a genuinely risky branch at it
+# and watching it sail through.
+mkdir -p "$OUT" || exit 0
+
+echo "api-flow-map: checking API changes against ${base:0:12} ..." >&2
+"$PY" "$APIFLOW" diff "$repo_root" --base "$base" -o "$OUT" \
+      --fail-on-risk "$FAIL_ON" >/dev/null 2>"$OUT/.hook.err"
+code=$?
+
+case "$code" in
+  0|2)
+    exit 0 ;;
+  4)
+    echo "" >&2
+    echo "  PUSH BLOCKED: this branch changes the API at risk level '$FAIL_ON' or above." >&2
+    echo "" >&2
+    "$PY" "$APIFLOW" diff "$repo_root" --base "$base" -o "$OUT" 2>/dev/null \
+      | grep -E "^\s*(high|medium)" >&2 || true
+    echo "" >&2
+    case "$OUT" in
+      /*) echo "  Review: $OUT/flow-diff.html" >&2 ;;
+      *)  echo "  Review: $repo_root/$OUT/flow-diff.html" >&2 ;;
+    esac
+    echo "  If the change is intended: git push --no-verify" >&2
+    echo "" >&2
+    exit 1 ;;
+  3)
+    echo "api-flow-map: git problem, skipping the gate" >&2; exit 0 ;;
+  *)
+    # The tool itself failed. Say so and let the push through: a broken
+    # analyser must not become a broken workflow.
+    echo "api-flow-map: the check did not run (exit $code), letting the push through" >&2
+    head -3 "$OUT/.hook.err" >&2 2>/dev/null || true
+    exit 0 ;;
+esac

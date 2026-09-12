@@ -1,0 +1,5 @@
+# Reviewers required for changes to the skill and its distribution manifests.
+# Replace with your team handle(s) before publishing.
+*                                   @brun0diaz
+/.claude-plugin/                    @brun0diaz
+/plugins/api-flow-map/              @brun0diaz

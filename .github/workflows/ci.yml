@@ -1,0 +1,28 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}" }
+      - run: pip install pyyaml
+      - name: Validate manifests, skill frontmatter and run tests
+        run: python tools/validate.py
+      - name: Validate with the Claude Code CLI (if available)
+        if: matrix.python == '3.12'
+        continue-on-error: true
+        run: |
+          npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 && claude plugin validate . || echo "claude CLI not available; skipped"
+      - name: Smoke-run the scanner on the bundled fixtures
+        run: |
+          S=plugins/api-flow-map/skills/api-flow-map/scripts
+          python $S/apiflow.py scan $S/tests/fixtures/spring-orders -o /tmp/out -q
+          python $S/apiflow.py doctor $S/tests/fixtures/go-orders

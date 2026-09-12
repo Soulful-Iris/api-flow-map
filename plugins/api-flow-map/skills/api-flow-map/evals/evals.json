@@ -1,0 +1,17 @@
+[
+  {
+    "id": "pr-review-spring",
+    "prompt": "I'm reviewing PR #482 on our orders service (Spring Boot, checked out at ./orders-service, branch feature/fraud-tuning against main). Tell me what changed in the API behaviour and whether anything is breaking.",
+    "expected": "Runs apiflow.py diff with --base origin/main (or main), reads the summary, highlights high-risk items first (removed endpoints, auth/status/route changes) with file:line, notes medium changes (new outbound calls, new conditions, feature flags), writes an annotations file with a digest and per-endpoint change summaries, re-renders, and hands back flow-diff.html plus the Markdown PR comment. States limits for anything unresolved."
+  },
+  {
+    "id": "map-unfamiliar-repo",
+    "prompt": "I just joined the team that owns ./payments-api (it's Express + some Lambda handlers). Can you give me a readable overview of every endpoint and what each one actually does?",
+    "expected": "Runs doctor then scan, produces flow-map.html/.md, writes endpoint titles and summaries via annotations for the endpoints, summarises the API surface (endpoints, auth, external systems, queues) in the reply and points to the HTML for details. Mentions untraced handlers or spec-only endpoints if any."
+  },
+  {
+    "id": "ci-gate",
+    "prompt": "We want our GitHub Actions to block PRs that change auth or status codes on the public API in ./api. Set that up.",
+    "expected": "Explains diff --fail-on-risk high, adds a workflow from references/ci-integration.md with fetch-depth 0, artifact upload and PR comment, suggests .apiflow.json include/base_branch, and describes what counts as high risk."
+  }
+]

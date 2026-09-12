@@ -1,0 +1,25 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyyaml
+      - run: python tools/validate.py
+      - name: Check the tag matches plugin.json
+        run: |
+          V=$(python -c "import json;print(json.load(open('plugins/api-flow-map/.claude-plugin/plugin.json'))['version'])")
+          [ "v$V" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != plugin version v$V"; exit 1; }
+      - run: python tools/build_skill_zip.py
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.skill
+            dist/*.zip
+          generate_release_notes: true
