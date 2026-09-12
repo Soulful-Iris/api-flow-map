@@ -4,6 +4,14 @@ import subprocess
 import tempfile
 import unittest
 
+def _read(path):
+    with open(path) as fh:
+        return fh.read()
+
+
+def _write(path, text):
+    with open(path, "w") as fh:
+        fh.write(text)
 from .helpers import fixture
 from apiflow import gitutil, render_html, render_md
 from apiflow.differ import diff_models
@@ -30,16 +38,16 @@ class DiffScenario(unittest.TestCase):
         _git(cls.root, "commit", "-qm", "base")
         _git(cls.root, "checkout", "-qb", "feature")
         # 1. condition change, 2. auth change, 3. new outbound call behind a flag, 4. status code change, 5. cosmetic edits
-        svc = open(os.path.join(cls.root, SERVICE)).read()
+        svc = _read(os.path.join(cls.root, SERVICE))
         svc = svc.replace("if (score > 80) {", "if (score > 60) {")
         svc = svc.replace("        return saved;\n    }\n\n    @Override\n    @Transactional\n    public void cancel",
                           "        if (featureFlags.isEnabled(\"order-confirmation-email\")) {\n            paymentClient.refund(\"noop\");\n        }\n        return saved;\n    }\n\n    @Override\n    @Transactional\n    public void cancel")
         svc = svc.replace("Order order = Order.from(request);", "// build the aggregate\n        Order order = Order.from(request);")   # cosmetic
-        open(os.path.join(cls.root, SERVICE), "w").write(svc)
-        ctl = open(os.path.join(cls.root, CONTROLLER)).read()
+        _write(os.path.join(cls.root, SERVICE), svc)
+        ctl = _read(os.path.join(cls.root, CONTROLLER))
         ctl = ctl.replace("hasRole('ORDER_READ')", "hasRole('ORDER_ADMIN')")
         ctl = ctl.replace("return ResponseEntity.noContent().build();", "return ResponseEntity.ok().build();")
-        open(os.path.join(cls.root, CONTROLLER), "w").write(ctl)
+        _write(os.path.join(cls.root, CONTROLLER), ctl)
         # working tree change (uncommitted) must be included too
         _git(cls.root, "commit", "-qam", "changes")
         base_ref = gitutil.default_base(cls.root)
@@ -153,12 +161,13 @@ index 1..2 100644
             _git(root, "init", "-q", "-b", "main")
             _git(root, "config", "user.email", "t@t")
             _git(root, "config", "user.name", "t")
-            open(os.path.join(root, "Svc.java"), "w").write("class Svc {\n  int limit() {\n    return 80;\n  }\n}\n")
+            _write(os.path.join(root, "Svc.java"), "class Svc {\n  int limit() {\n    return 80;\n  }\n}\n")
             _git(root, "add", "-A")
             _git(root, "commit", "-qm", "base")
             base = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-            open(os.path.join(root, "Svc.java"), "w").write("class Svc {\n  int limit() {\n    return 60;\n  }\n}\n")   # uncommitted change
-            open(os.path.join(root, "New.java"), "w").write("class New {}\n")                                            # untracked file
+            _write(os.path.join(root, "Svc.java"),
+                   "class Svc {\n  int limit() {\n    return 60;\n  }\n}\n")   # uncommitted change
+            _write(os.path.join(root, "New.java"), "class New {}\n")        # untracked file
             out = codediff.collect(root, base, None, ["Svc.java", "New.java", "missing.java"])
             self.assertEqual(set(out["files"]), {"Svc.java", "New.java"})
             plus = [l for h in out["files"]["Svc.java"]["hunks"] for l in h["lines"] if l["t"] == "+"]

@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
 apiflow-out/
+.apiflow-out/
 dist/
 .DS_Store

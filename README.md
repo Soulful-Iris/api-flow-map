@@ -15,7 +15,7 @@ Python 3.9+, git; PyYAML optional. No network access, read-only on the repositor
 **Claude Code**
 
 ```
-/plugin marketplace add <owner>/<repo>
+/plugin marketplace add Soulful-Iris/api-flow-map
 /plugin install api-flow-map@bruno-api-tools
 ```
 
