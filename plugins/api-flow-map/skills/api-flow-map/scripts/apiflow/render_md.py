@@ -245,6 +245,73 @@ def _clip(text: str, n: int) -> str:
     return t if len(t) <= n else t[: n - 1] + "…"
 
 
+# Unchanged nodes carry change="same", which is a non-empty string and
+# therefore truthy. Testing `n.get("change")` said "yes, something changed"
+# about every node in every flow, so nothing ever collapsed. Only these three
+# values are a change.
+_REAL_CHANGES = ("added", "removed", "modified")
+
+
+def _has_change_deep(n: Dict[str, Any]) -> bool:
+    """Does this node, or anything under it, carry a REAL change?"""
+    if n.get("change") in _REAL_CHANGES:
+        return True
+    for c in n.get("children", []) or []:
+        if _has_change_deep(c):
+            return True
+    for b in n.get("branches", []) or []:
+        for sdeep in b.get("steps", []) or []:
+            if _has_change_deep(sdeep):
+                return True
+    return False
+
+
+def _count_steps(nodes: List[Dict[str, Any]]) -> int:
+    total = 0
+    for n in nodes or []:
+        if n.get("kind") in ("log", "transform", "note"):
+            continue
+        total += 1 + _count_steps(n.get("children") or [])
+        for b in n.get("branches") or []:
+            total += _count_steps(b.get("steps") or [])
+    return total
+
+
+def _mermaid_facts(n: Dict[str, Any]) -> List[str]:
+    """What belongs in a DIAGRAM box, which is not what belongs in the HTML.
+
+    The HTML view can afford the call signature under every title because it
+    has a whole page; a Mermaid node is a box in a PR comment. Putting
+    `OrderServiceImpl.placeOrder(request, requestId)` in every node is the
+    thing that made these diagrams sprawl, and it contradicts the skill's own
+    pitch: titles an engineer understands, not code.
+
+    So a diagram box gets the condition (which IS the meaning of a branch) and
+    the old value when something changed, struck through the way the HTML
+    shows it. Nothing else.
+    """
+    out: List[str] = []
+    if n.get("kind") in ("branch", "loop") and n.get("condition"):
+        out.append(_clip(n["condition"], 52))
+    if n.get("change") == "modified" and n.get("before"):
+        b = n["before"]
+        f = n.get("changed_fields", [])
+        if "condition" in f:
+            was = b.get("condition")
+        elif "outcome" in f:
+            was = (b.get("label", "")
+                   + (f" [{b['outcome']['status']}]"
+                      if b.get("outcome", {}).get("status") else ""))
+        else:
+            was = b.get("target") or b.get("label")
+        if was:
+            out.append("<s>was " + _clip(was, 46) + "</s>")
+    for t in n.get("tags", []):
+        if t.startswith("flag:"):
+            out.append("flag: " + t[5:])
+    return out
+
+
 def mermaid_flowchart(e: Dict[str, Any], max_nodes: int = 60, with_facts: bool = True) -> List[str]:
     """A compact top-to-bottom flowchart of the endpoint's main path, with the
     variables involved in each box and diff colouring when the flow is merged."""
@@ -263,7 +330,13 @@ def mermaid_flowchart(e: Dict[str, Any], max_nodes: int = 60, with_facts: bool =
         kind = n.get("kind", "")
         parts = [_mm(n.get("label", ""))]
         if with_facts:
-            parts += ["<i>" + _mm(f) + "</i>" for f in _facts(n)]
+            for f in _mermaid_facts(n):
+                if f.startswith("<s>"):
+                    parts.append(f)          # already marked up; do not italicise
+                else:
+                    parts.append("<i>" + _mm(f) + "</i>")
+        if n.get("_collapsed"):
+            parts.append("<i>%d steps inside</i>" % n["_collapsed"])
         if n.get("outcome", {}).get("status"):
             parts[0] += f" [{n['outcome']['status']}]"
         text = "<br/>".join(parts)
@@ -290,16 +363,31 @@ def mermaid_flowchart(e: Dict[str, Any], max_nodes: int = 60, with_facts: bool =
     lines.append(f'    {start}(["{_mm(e["method"] + " " + e["path"])}"])')
     classes.append(f"    class {start} resp")
 
-    def walk(nodes: List[Dict[str, Any]], prev: str) -> str:
+    def walk(nodes: List[Dict[str, Any]], prevs: List[str]) -> List[str]:
+        """prevs is a LIST of tails, so a branch can rejoin without an empty
+        node. The old version emitted `j(( ))` as a join point, which renders
+        as a small unlabelled circle floating next to the flow and reads as a
+        glitch rather than as structure. Edges from every tail to the next box
+        say the same thing and draw nothing extra."""
         for n in nodes:
             if counter["n"] >= max_nodes:
-                return prev
+                return prevs
             if n.get("kind") in ("log", "transform", "note") or n.get("change") == "moved-from":
                 continue
+
+            kids = n.get("children") or []
+            collapsible = (kids and "wrapper" not in n.get("tags", [])
+                           and n.get("kind") == "call"
+                           and not any(_has_change_deep(c) for c in kids))
+            if collapsible:
+                n = dict(n, _collapsed=_count_steps(kids))
+
             i = node(n)
-            edges.append(f"    {prev} --> {i}")
+            for pv in prevs:
+                edges.append(f"    {pv} --> {i}")
+
             if n.get("branches"):
-                ends = []
+                ends: List[str] = []
                 for bi, b in enumerate(n["branches"]):
                     first_if = (bi == 0 and n.get("kind") == "branch" and str(n.get("detail", "")).startswith("if ("))
                     lab = "yes" if first_if else _mm(b.get("label", ""))[:40]
@@ -307,29 +395,24 @@ def mermaid_flowchart(e: Dict[str, Any], max_nodes: int = 60, with_facts: bool =
                     if steps:
                         first = node(steps[0])
                         edges.append(f'    {i} -- "{lab}" --> {first}')
-                        end = walk(steps[1:], first)
+                        end = walk(steps[1:], [first])
                         if not b.get("exits"):
-                            ends.append(end)
+                            ends.extend(end)
                     else:
                         ends.append(i)
                 if n.get("kind") == "branch" and not any(b.get("label") == "Otherwise" for b in n["branches"]):
                     ends.append(i)
                 if not ends:
-                    return i
-                # join point
-                j = nid()
-                lines.append(f"    {j}(( ))")
-                for en in ends:
-                    edges.append(f"    {en} --> {j}")
-                prev = j
-            elif n.get("children") and "wrapper" not in n.get("tags", []) and n.get("kind") == "call":
-                end = walk(n["children"], i)
-                prev = end
+                    return [i]
+                prevs = ends
+            elif kids and not collapsible and "wrapper" not in n.get("tags", []) and n.get("kind") == "call":
+                # something under here changed, so it has to stay open
+                prevs = walk(kids, [i])
             else:
-                prev = i
-        return prev
+                prevs = [i]
+        return prevs
 
-    walk(e.get("flow", []), start)
+    walk(e.get("flow", []), [start])
     lines.extend(edges)
     lines.append("    classDef cond fill:#F8F6FC,stroke:#7C6F9B,color:#1B2430")
     lines.append("    classDef resp fill:#1B2430,stroke:#1B2430,color:#ffffff")
@@ -345,6 +428,9 @@ def mermaid_flowchart(e: Dict[str, Any], max_nodes: int = 60, with_facts: bool =
 def _mm(text: str) -> str:
     t = re.sub(r"[\"`]", "'", text or "")
     t = t.replace("||", " or ").replace("&&", " and ").replace("|", "/")
-    t = t.replace("[", "(").replace("]", ")").replace("{", "(").replace("}", ")")
+    # NOT escaping [] or {} -- mermaid renders both correctly inside a quoted
+    # node label, verified against mermaid 12 with GitHub's own config
+    # (securityLevel strict, htmlLabels false). The old substitution printed
+    # `/api/v1/orders/(id)/cancel` on every diagram: a path that does not exist.
     t = t.replace("#", "＃").replace(";", ",").replace("<br/>", " ")
     return t[:90]
