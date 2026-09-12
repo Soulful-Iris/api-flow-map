@@ -10,6 +10,18 @@ Frameworks: Spring MVC/WebFlux, JAX-RS, Express/Koa/Fastify/Hono, NestJS, Next.j
 FastAPI, Django REST, Go (net/http, gin, echo, chi, gorilla), ASP.NET Core, OpenAPI, serverless.yml/SAM.
 Python 3.9+, git; PyYAML optional. No network access, read-only on the repository.
 
+## What it looks like
+
+![PR review](screenshots/example-1-pr-review.png)
+
+More in [`screenshots/`](screenshots/) — whole-PR overview, before/after box
+diagrams, the VS Code-style code-changes toggle inline and side by side.
+Real generated output is in [`samples/`](samples/): open
+`sample-pr-review.html` in a browser, and `sample-pr-comment.md` is exactly
+what lands on a pull request.
+
+The original project handoff, kept verbatim, is in [`HANDOFF.md`](HANDOFF.md).
+
 ## Install
 
 **Claude Code**
