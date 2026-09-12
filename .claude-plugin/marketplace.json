@@ -10,7 +10,7 @@
       "name": "api-flow-map",
       "source": "./plugins/api-flow-map",
       "description": "Map API request flows in plain English and review what a branch or PR changes (Spring, Express/NestJS, FastAPI/Flask/Django, Go, ASP.NET, OpenAPI, serverless). Self-contained HTML review view, Markdown PR comment, CI risk gate.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "category": "code-review",
       "tags": [
         "api",

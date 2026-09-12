@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.1 - 2026-09-12
+
+- Document that Python source is parsed with the running interpreter: on 3.9 a
+  repo using `match` or newer syntax has those files skipped, reported in
+  `diagnostics` and `doctor`. Check `doctor` when a Python flow looks short.
+- Test suite asserts the version-appropriate result on 3.9 and 3.12, and
+  asserts the skipped-file diagnostic rather than hiding the case.
+- `tools/pre-push` + `tools/install-hook.sh`: deterministic pre-push gate that
+  refuses a push when API risk reaches `high`. No model call.
+
 ## 1.0.0 — 2026-09-11
 
 Initial release.

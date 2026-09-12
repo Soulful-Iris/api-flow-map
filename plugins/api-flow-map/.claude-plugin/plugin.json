@@ -1,7 +1,7 @@
 {
   "name": "api-flow-map",
   "description": "Map API request flows in plain English and review what a branch or PR changes.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "Bruno"
   },
