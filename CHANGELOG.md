@@ -24,3 +24,4 @@ Initial release.
   ledger, whole-PR page, IDE-style code changes (inline / side by side), search, print.
 - Markdown PR comment with Mermaid flowcharts; JSON models; annotations merge for Claude-written
   titles and digests.
+
