@@ -1,6 +1,18 @@
+import sys
 import unittest
 
 from .helpers import all_steps, find_ep, fixture, labels
+
+# The fastapi fixture's order_service.py uses a `match` statement, i.e. real
+# 3.10+ source. apiflow itself runs on 3.9+, but it reads Python with `ast`,
+# and `ast` can only parse what the INTERPRETER RUNNING IT understands. So on
+# 3.9 that file is skipped and the steps traced out of it do not exist.
+#
+# That is a genuine property of the tool and not a bug -- it reports the
+# skipped file in `diagnostics` and in `doctor` rather than pretending. The
+# test asserts the version-appropriate thing and checks the diagnostic, so the
+# honest behaviour is covered rather than the limitation being papered over.
+CAN_PARSE_MATCH = sys.version_info >= (3, 10)
 from apiflow.scanner import scan
 
 
@@ -99,12 +111,30 @@ class FastapiFixture(unittest.TestCase):
         self.assertEqual(post.properties["body"], "CreateOrderRequest")
         self.assertIn("Depends(require_scope('orders:write'))", post.properties["auth"])
         ls = labels(post)
-        for expected in ("Call inventory service: POST /reservations", "Insert order", "Commit transaction",
-                         "Publish message to 'order-events'", "Fail with 409 Conflict", "Respond 201 Created with order out"):
+        # present regardless: these come from the router file itself
+        for expected in ("Fail with 409 Conflict", "Respond 201 Created with order out"):
             self.assertIn(expected, ls, ls)
+        # these come from tracing INTO app/services/order_service.py
+        traced = ("Call inventory service: POST /reservations", "Insert order",
+                  "Commit transaction", "Publish message to 'order-events'")
+        if CAN_PARSE_MATCH:
+            for expected in traced:
+                self.assertIn(expected, ls, ls)
+        else:
+            for absent in traced:
+                self.assertNotIn(absent, ls, ls)
+            self.assertTrue(
+                any("order_service.py" in d and "syntax error" in d
+                    for d in self.model.diagnostics),
+                "the skipped file must be reported, not silently dropped: %r"
+                % (self.model.diagnostics,))
         get = find_ep(self.model, "GET", "/orders/{order_id}")
         self.assertEqual(get.properties["responses"], [200, 403, 404])
-        self.assertIn("Load order by ID", labels(get))
+        # also traced out of order_service.py -- see CAN_PARSE_MATCH above
+        if CAN_PARSE_MATCH:
+            self.assertIn("Load order by ID", labels(get))
+        else:
+            self.assertNotIn("Load order by ID", labels(get))
 
 
 class GoFixture(unittest.TestCase):

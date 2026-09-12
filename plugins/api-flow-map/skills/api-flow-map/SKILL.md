@@ -107,6 +107,13 @@ either invisible or shown as `external`/`interface-only`. Calls are followed at 
 heuristically; the code snippet is one toggle away. Secrets in snippets are redacted. Treat the
 map as an accurate index of *where to look*, and verify anything surprising in the source.
 
+**Python source is parsed with the interpreter you are running.** `ast` only understands syntax
+its own version knows, so running apiflow on Python 3.9 against a repo that uses `match`
+statements (3.10) or newer syntax will skip those files. They are not dropped silently: each one
+appears in `diagnostics` and in `doctor` as `python syntax error at line N; file skipped`, and
+any flow that would have been traced through them is simply absent. If `doctor` reports syntax
+errors on code you know is valid, run apiflow on a newer interpreter.
+
 ## Configuration
 
 `.apiflow.json` at the repo root (all optional): `include`/`exclude` globs, `include_tests`,

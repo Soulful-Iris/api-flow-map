@@ -37,3 +37,17 @@
   "endpoint_titles": {"POST /api/v1/orders": "Place an order"}
 }
 ```
+
+## Python: the interpreter version matters
+
+Python handlers are read with the standard-library `ast`, which parses only the syntax the
+running interpreter knows. apiflow supports Python 3.9+, but on 3.9 a repository using 3.10+
+syntax (`match`, PEP 604 unions in executable positions, PEP 695 generics) will have those files
+**skipped**, and every step that would have been traced through them will be missing from the
+flow.
+
+This is reported, never silent: `diagnostics` and `doctor` both list
+`<path>: python syntax error at line N; file skipped`. Check `doctor` first when a Python
+endpoint's flow looks unexpectedly short.
+
+Rule of thumb: **run apiflow on an interpreter at least as new as the code it is reading.**
